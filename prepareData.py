@@ -269,7 +269,7 @@ def normalization(train, val, test):
 
 # prepare dataset
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", default='configurations/PEMS08_astgcn.conf', type=str,
+parser.add_argument("--config", default='configurations/METR_LA_astgcn.conf', type=str,
                     help="configuration file path")
 args = parser.parse_args()
 config = configparser.ConfigParser()

@@ -12,9 +12,11 @@ import configparser
 from model.ASTGCN_r import make_model
 from lib.utils import load_graphdata_channel1, get_adjacency_matrix, compute_val_loss_mstgcn, predict_and_save_results_mstgcn
 from tensorboardX import SummaryWriter
+from lib.metrics import masked_mape_np,  masked_mae,masked_mse,masked_rmse
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", default='configurations/PEMS04_astgcn.conf', type=str,
+parser.add_argument("--config", default='configurations/METR_LA_astgcn.conf', type=str,
                     help="configuration file path")
 args = parser.parse_args()
 config = configparser.ConfigParser()
@@ -57,6 +59,9 @@ nb_time_filter = int(training_config['nb_time_filter'])
 in_channels = int(training_config['in_channels'])
 nb_block = int(training_config['nb_block'])
 K = int(training_config['K'])
+loss_function = training_config['loss_function']
+metric_method = training_config['metric_method']
+missing_value = float(training_config['missing_value'])
 
 folder_dir = '%s_h%dd%dw%d_channel%d_%e' % (model_name, num_of_hours, num_of_days, num_of_weeks, in_channels, learning_rate)
 print('folder_dir:', folder_dir)
@@ -98,8 +103,21 @@ def train_main():
     print('graph_signal_matrix_filename\t', graph_signal_matrix_filename)
     print('start_epoch\t', start_epoch)
     print('epochs\t', epochs)
-
-    criterion = nn.MSELoss().to(DEVICE)
+    masked_flag=0
+    criterion = nn.L1Loss().to(DEVICE)
+    criterion_masked = masked_mae
+    if loss_function=='masked_mse':
+        criterion_masked = masked_mse         #nn.MSELoss().to(DEVICE)
+        masked_flag=1
+    elif loss_function=='masked_mae':
+        criterion_masked = masked_mae
+        masked_flag = 1
+    elif loss_function == 'mae':
+        criterion = nn.L1Loss().to(DEVICE)
+        masked_flag = 0
+    elif loss_function == 'rmse':
+        criterion = nn.MSELoss().to(DEVICE)
+        masked_flag= 0
     optimizer = optim.Adam(net.parameters(), lr=learning_rate)
     sw = SummaryWriter(logdir=params_path, flush_secs=5)
     print(net)
@@ -136,7 +154,11 @@ def train_main():
 
         params_filename = os.path.join(params_path, 'epoch_%s.params' % epoch)
 
-        val_loss = compute_val_loss_mstgcn(net, val_loader, criterion, sw, epoch)
+        if masked_flag:
+            val_loss = compute_val_loss_mstgcn(net, val_loader, criterion_masked, masked_flag,missing_value,sw, epoch)
+        else:
+            val_loss = compute_val_loss_mstgcn(net, val_loader, criterion, masked_flag, missing_value, sw, epoch)
+
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -154,7 +176,11 @@ def train_main():
 
             outputs = net(encoder_inputs)
 
-            loss = criterion(outputs, labels)
+            if masked_flag:
+                loss = criterion_masked(outputs, labels,missing_value)
+            else :
+                loss = criterion(outputs, labels)
+
 
             loss.backward()
 
@@ -173,10 +199,10 @@ def train_main():
     print('best epoch:', best_epoch)
 
     # apply the best model on the test set
-    predict_main(best_epoch, test_loader, test_target_tensor, _mean, _std, 'test')
+    predict_main(best_epoch, test_loader, test_target_tensor,metric_method ,_mean, _std, 'test')
 
 
-def predict_main(global_step, data_loader, data_target_tensor, _mean, _std, type):
+def predict_main(global_step, data_loader, data_target_tensor,metric_method, _mean, _std, type):
     '''
 
     :param global_step: int
@@ -193,14 +219,14 @@ def predict_main(global_step, data_loader, data_target_tensor, _mean, _std, type
 
     net.load_state_dict(torch.load(params_filename))
 
-    predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type)
+    predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, metric_method,_mean, _std, params_path, type)
 
 
 if __name__ == "__main__":
 
-    # train_main()
+    train_main()
 
-    predict_main(31, test_loader, test_target_tensor, _mean, _std, 'test')
+    # predict_main(13, test_loader, test_target_tensor,metric_method, _mean, _std, 'test')
 
 
 

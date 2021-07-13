@@ -6,6 +6,7 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
 from .metrics import masked_mape_np
 from scipy.sparse.linalg import eigs
+from .metrics import masked_mape_np,  masked_mae,masked_mse,masked_rmse,masked_mae_test,masked_rmse_test
 
 
 def re_normalization(x, mean, std):
@@ -214,7 +215,7 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
     return train_loader, train_target_tensor, val_loader, val_target_tensor, test_loader, test_target_tensor, mean, std
 
 
-def compute_val_loss_mstgcn(net, val_loader, criterion, sw, epoch, limit=None):
+def compute_val_loss_mstgcn(net, val_loader, criterion,  masked_flag,missing_value,sw, epoch, limit=None):
     '''
     for rnn, compute mean loss on validation set
     :param net: model
@@ -237,7 +238,11 @@ def compute_val_loss_mstgcn(net, val_loader, criterion, sw, epoch, limit=None):
         for batch_index, batch_data in enumerate(val_loader):
             encoder_inputs, labels = batch_data
             outputs = net(encoder_inputs)
-            loss = criterion(outputs, labels)  # 计算误差
+            if masked_flag:
+                loss = criterion(outputs, labels, missing_value)
+            else:
+                loss = criterion(outputs, labels)
+
             tmp.append(loss.item())
             if batch_index % 100 == 0:
                 print('validation batch %s / %s, loss: %.2f' % (batch_index + 1, val_loader_length, loss.item()))
@@ -249,60 +254,60 @@ def compute_val_loss_mstgcn(net, val_loader, criterion, sw, epoch, limit=None):
     return validation_loss
 
 
-def evaluate_on_test_mstgcn(net, test_loader, test_target_tensor, sw, epoch, _mean, _std):
-    '''
-    for rnn, compute MAE, RMSE, MAPE scores of the prediction for every time step on testing set.
+# def evaluate_on_test_mstgcn(net, test_loader, test_target_tensor, sw, epoch, _mean, _std):
+#     '''
+#     for rnn, compute MAE, RMSE, MAPE scores of the prediction for every time step on testing set.
+#
+#     :param net: model
+#     :param test_loader: torch.utils.data.utils.DataLoader
+#     :param test_target_tensor: torch.tensor (B, N_nodes, T_output, out_feature)=(B, N_nodes, T_output, 1)
+#     :param sw:
+#     :param epoch: int, current epoch
+#     :param _mean: (1, 1, 3(features), 1)
+#     :param _std: (1, 1, 3(features), 1)
+#     '''
+#
+#     net.train(False)  # ensure dropout layers are in test mode
+#
+#     with torch.no_grad():
+#
+#         test_loader_length = len(test_loader)
+#
+#         test_target_tensor = test_target_tensor.cpu().numpy()
+#
+#         prediction = []  # 存储所有batch的output
+#
+#         for batch_index, batch_data in enumerate(test_loader):
+#
+#             encoder_inputs, labels = batch_data
+#
+#             outputs = net(encoder_inputs)
+#
+#             prediction.append(outputs.detach().cpu().numpy())
+#
+#             if batch_index % 100 == 0:
+#                 print('predicting testing set batch %s / %s' % (batch_index + 1, test_loader_length))
+#
+#         prediction = np.concatenate(prediction, 0)  # (batch, T', 1)
+#         prediction_length = prediction.shape[2]
+#
+#         for i in range(prediction_length):
+#             assert test_target_tensor.shape[0] == prediction.shape[0]
+#             print('current epoch: %s, predict %s points' % (epoch, i))
+#             mae = mean_absolute_error(test_target_tensor[:, :, i], prediction[:, :, i])
+#             rmse = mean_squared_error(test_target_tensor[:, :, i], prediction[:, :, i]) ** 0.5
+#             mape = masked_mape_np(test_target_tensor[:, :, i], prediction[:, :, i], 0)
+#             print('MAE: %.2f' % (mae))
+#             print('RMSE: %.2f' % (rmse))
+#             print('MAPE: %.2f' % (mape))
+#             print()
+#             if sw:
+#                 sw.add_scalar('MAE_%s_points' % (i), mae, epoch)
+#                 sw.add_scalar('RMSE_%s_points' % (i), rmse, epoch)
+#                 sw.add_scalar('MAPE_%s_points' % (i), mape, epoch)
 
-    :param net: model
-    :param test_loader: torch.utils.data.utils.DataLoader
-    :param test_target_tensor: torch.tensor (B, N_nodes, T_output, out_feature)=(B, N_nodes, T_output, 1)
-    :param sw:
-    :param epoch: int, current epoch
-    :param _mean: (1, 1, 3(features), 1)
-    :param _std: (1, 1, 3(features), 1)
-    '''
 
-    net.train(False)  # ensure dropout layers are in test mode
-
-    with torch.no_grad():
-
-        test_loader_length = len(test_loader)
-
-        test_target_tensor = test_target_tensor.cpu().numpy()
-
-        prediction = []  # 存储所有batch的output
-
-        for batch_index, batch_data in enumerate(test_loader):
-
-            encoder_inputs, labels = batch_data
-
-            outputs = net(encoder_inputs)
-
-            prediction.append(outputs.detach().cpu().numpy())
-
-            if batch_index % 100 == 0:
-                print('predicting testing set batch %s / %s' % (batch_index + 1, test_loader_length))
-
-        prediction = np.concatenate(prediction, 0)  # (batch, T', 1)
-        prediction_length = prediction.shape[2]
-
-        for i in range(prediction_length):
-            assert test_target_tensor.shape[0] == prediction.shape[0]
-            print('current epoch: %s, predict %s points' % (epoch, i))
-            mae = mean_absolute_error(test_target_tensor[:, :, i], prediction[:, :, i])
-            rmse = mean_squared_error(test_target_tensor[:, :, i], prediction[:, :, i]) ** 0.5
-            mape = masked_mape_np(test_target_tensor[:, :, i], prediction[:, :, i], 0)
-            print('MAE: %.2f' % (mae))
-            print('RMSE: %.2f' % (rmse))
-            print('MAPE: %.2f' % (mape))
-            print()
-            if sw:
-                sw.add_scalar('MAE_%s_points' % (i), mae, epoch)
-                sw.add_scalar('RMSE_%s_points' % (i), rmse, epoch)
-                sw.add_scalar('MAPE_%s_points' % (i), mape, epoch)
-
-
-def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type):
+def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, metric_method,_mean, _std, params_path, type):
     '''
 
     :param net: nn.Module
@@ -358,18 +363,28 @@ def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global
         for i in range(prediction_length):
             assert data_target_tensor.shape[0] == prediction.shape[0]
             print('current epoch: %s, predict %s points' % (global_step, i))
-            mae = mean_absolute_error(data_target_tensor[:, :, i], prediction[:, :, i])
-            rmse = mean_squared_error(data_target_tensor[:, :, i], prediction[:, :, i]) ** 0.5
-            mape = masked_mape_np(data_target_tensor[:, :, i], prediction[:, :, i], 0)
+            if metric_method == 'mask':
+                mae = masked_mae_test(data_target_tensor[:, :, i], prediction[:, :, i],0.0)
+                rmse = masked_rmse_test(data_target_tensor[:, :, i], prediction[:, :, i],0.0)
+                mape = masked_mape_np(data_target_tensor[:, :, i], prediction[:, :, i], 0)
+            else :
+                mae = mean_absolute_error(data_target_tensor[:, :, i], prediction[:, :, i])
+                rmse = mean_squared_error(data_target_tensor[:, :, i], prediction[:, :, i]) ** 0.5
+                mape = masked_mape_np(data_target_tensor[:, :, i], prediction[:, :, i], 0)
             print('MAE: %.2f' % (mae))
             print('RMSE: %.2f' % (rmse))
             print('MAPE: %.2f' % (mape))
             excel_list.extend([mae, rmse, mape])
 
         # print overall results
-        mae = mean_absolute_error(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1))
-        rmse = mean_squared_error(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1)) ** 0.5
-        mape = masked_mape_np(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1), 0)
+        if metric_method == 'mask':
+            mae = masked_mae_test(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1), 0.0)
+            rmse = masked_rmse_test(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1), 0.0)
+            mape = masked_mape_np(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1), 0)
+        else :
+            mae = mean_absolute_error(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1))
+            rmse = mean_squared_error(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1)) ** 0.5
+            mape = masked_mape_np(data_target_tensor.reshape(-1, 1), prediction.reshape(-1, 1), 0)
         print('all MAE: %.2f' % (mae))
         print('all RMSE: %.2f' % (rmse))
         print('all MAPE: %.2f' % (mape))

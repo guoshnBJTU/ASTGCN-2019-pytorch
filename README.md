@@ -19,9 +19,27 @@ This is a Pytorch implementation of ASTGCN and MSTCGN. The pytorch version of AS
 }
 ```
 
+# Configuration
+
+Step 1: The loss function and metrics can be set in the configuration file in ./configurations
+
+Step 2: The last three lines of the configuration file are as follows:
+
+  ```c++
+  loss_function = masked_mae
+  metric_method = mask
+  missing_value = 0.0
+  ```
+
+loss_function can choose 'masked_mae',  'masked_mse',  'mae',  'mse'. The loss function with a mask does not consider  missing values.
+
+metric_method can choose 'mask', 'unmask'. The metric with a mask does not evaluate missing values.
+
+The missing_value is the missing identification, whose default value is 0.0
+
 # Datasets
 
-Step 1: Download PEMS04 and PEMS08 datasets provided by [ASTGCN-gluon version](https://github.com/guoshnBJTU/ASTGCN/tree/master/data). 
+Step 1: Download PEMS04 and PEMS08 datasets provided by [ASTGNN](https://github.com/guoshnBJTU/ASTGNN/tree/main/data). 
 
 Step 2: Process dataset
 
